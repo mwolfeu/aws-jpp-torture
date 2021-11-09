@@ -1,5 +1,11 @@
 'use strict';
 const AWS = require('aws-sdk')
+const Schema = require('js/schema.js')
+const Filter = require('js/filter.js')
+
+let allowedHosts = ["http://localhost:3000", "http://localhost:5500", "https://mwolfeu.github.io"];
+let schema = new Schema();
+let filter = new Filter();
 
 module.exports = {
 
@@ -16,7 +22,30 @@ module.exports = {
     };
   },
 
+  byRegion: async(event) => {
+
+    let acao = "";
+    if (allowedHosts.includes(event.headers.origin)) {
+      acao = event.headers.origin; // testing
+    }
+
+    return {
+      statusCode: 200,
+      headers: {
+        "Access-Control-Allow-Headers": "Content-Type",
+        "Access-Control-Allow-Origin": acao,
+        "Access-Control-Allow-Methods": "OPTIONS,POST,GET"
+      },
+      body: JSON.stringify(filter.regionAggregates()),
+      // body: JSON.stringify({ hi: 1 }),
+    };
+  },
+
   create: async(event, context) => {
+    let tableName = process.env.DYNAMODB_SURVEY_TABLE;
+    if (event.path == "/v1/incident")
+      tableName = process.env.DYNAMODB_INCIDENT_TABLE;
+
     let bodyObj = {}
     try {
       bodyObj = JSON.parse(event.body)
@@ -27,36 +56,49 @@ module.exports = {
       }
     }
 
-    if (typeof bodyObj.name == 'undefined' ||
-      typeof bodyObj.age == 'undefined') {
-      console.log('Missing parameters')
-      return {
-        statusCode: 400
-      }
+    if (!bodyObj.lang) {
+      console.log('Language not set');
+      return { statusCode: 461 }
     }
 
-    let putParams = {
-      TableName: process.env.DYNAMODB_INCIDENT_TABLE,
-      Item: {
-        name: bodyObj.name,
-        age: bodyObj.age,
-        other: bodyObj.other
-      }
+    if (!(['en', 'ur'].includes(bodyObj.lang))) {
+      console.log('Language incorrect: ', bodyObj.lang);
+      return { statusCode: 462 }
     }
+    let lang = bodyObj.lang;
+
+    let rv = schema.encode(bodyObj.data, lang);
+    let putParams;
+    if (rv.valid) {
+      putParams = {
+        TableName: tableName,
+        Item: {
+          ...bodyObj.data,
+          requestId: String(Date.now()),
+        }
+      }
+    } else
+      return {
+        statusCode: 400, // failed schema validation
+        body: JSON.stringify(rv)
+      }
+
     let putResult = {}
     try {
       let dynamodb = new AWS.DynamoDB.DocumentClient()
       putResult = await dynamodb.put(putParams).promise()
-    } catch {
+    } catch (error) {
       console.log('Error: lambda create')
       console.log('putParams', putParams)
       return {
-        statusCode: 500
+        statusCode: 500,
+        // body: JSON.stringify([event, context, putParams, error])
       }
     }
 
     return {
-      statusCode: 201
+      statusCode: 201,
+      //body: JSON.stringify([event, context])
     }
   },
 
@@ -116,7 +158,7 @@ module.exports = {
 
     return {
       statusCode: 200,
-      body: JSON.stringify(scanResult)
+      body: JSON.stringify(getResult)
     }
   },
 

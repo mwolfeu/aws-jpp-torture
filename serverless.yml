@@ -21,9 +21,15 @@ provider:
         - dynamodb:UpdateItem
         - dynamodb:DeleteItem
       Resource: arn:aws:dynamodb:${aws:region}:${aws:accountId}:table/${self:service}-incidents-${opt:stage}
-
+    - Effect: "Allow"
+      Action:
+        - dynamodb:PutItem
+        - dynamodb:Scan*
+        - dynamodb:DeleteItem
+      Resource: arn:aws:dynamodb:${aws:region}:${aws:accountId}:table/${self:service}-survey-${opt:stage}
   environment:
       DYNAMODB_INCIDENT_TABLE: ${self:service}-incidents-${opt:stage}
+      DYNAMODB_SURVEY_TABLE: ${self:service}-survey-${opt:stage}
 
 resources:
   Resources:
@@ -32,10 +38,22 @@ resources:
       Properties:
         TableName: ${self:service}-incidents-${opt:stage}
         AttributeDefinitions:
-          - AttributeName: name
+          - AttributeName: requestId
             AttributeType: S
         KeySchema:
-          - AttributeName: name
+          - AttributeName: requestId
+            KeyType: HASH
+        BillingMode: PAY_PER_REQUEST
+
+    surveyTable:
+      Type: 'AWS::DynamoDB::Table'
+      Properties:
+        TableName: ${self:service}-survey-${opt:stage}
+        AttributeDefinitions:
+          - AttributeName: requestId
+            AttributeType: S
+        KeySchema:
+          - AttributeName: requestId
             KeyType: HASH
         BillingMode: PAY_PER_REQUEST
 
@@ -91,6 +109,25 @@ functions:
             authorizerId:
               Ref: tortureApiGatewayAuthorizer
 
+  byRegion:
+    handler: handler.byRegion
+    events:
+      - http:
+          path: /v1/byRegion
+          method: post
+          cors: true
+          # cors:
+          #   origins:
+          #     - "https://mwolfeu.github.io"
+
+  submitSurvey:
+    handler: handler.create
+    events:
+      - http:
+          path: /v1/submitSurvey
+          method: post
+          cors: true
+
   create:
     handler: handler.create
     events:
@@ -103,6 +140,7 @@ functions:
             type: COGNITO_USER_POOLS
             authorizerId:
               Ref: tortureApiGatewayAuthorizer
+
   list:
     handler: handler.list
     events:
@@ -119,7 +157,7 @@ functions:
     handler: handler.get
     events:
       - http:
-          path: /v1/incident/{name}
+          path: /v1/incident/{requestId}
           method: get
           # cognito params
           cors: true
@@ -131,7 +169,7 @@ functions:
     handler: handler.update
     events:
       - http:
-          path: /v1/incident/{name}
+          path: /v1/incident/{requestId}
           method: put
           # cognito params
           cors: true
@@ -143,7 +181,7 @@ functions:
     handler: handler.delete
     events:
       - http:
-          path: /v1/incident/{name}
+          path: /v1/incident/{requestId}
           method: delete
           # cognito params
           cors: true
