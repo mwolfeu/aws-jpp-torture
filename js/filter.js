@@ -38,7 +38,7 @@ function pSet(obj, path, val) {
 let sumRegions = function(data, provinces, keys) {
   data.pakistan = {
     region: {},
-    total: {}
+    total: { value: 0 }
   }; // add country
 
   provinces.forEach(d => {
